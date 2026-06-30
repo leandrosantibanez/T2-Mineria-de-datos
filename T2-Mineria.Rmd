@@ -1,0 +1,312 @@
+---
+title: "T2 Mineria de datos"
+author: "Leandro Santibañez"
+date: "2026-06-29"
+output: 
+  pdf_document:
+    latex_engine: xelatex
+---
+
+Carga de librerias
+```{r packages}
+packages <- c(
+  "tidyverse",
+  "tidymodels",
+  "dplyr",
+  "glmnet",
+  "MASS",
+  "broom",
+  "pROC",
+  "yardstick",
+  "palmerpenguins",
+  "titanic",
+  "modeldata",
+  "factoextra",
+  "cluster",
+  "ggrepel"
+)
+library(tidyverse)
+library(tidymodels)
+library(dplyr)
+library(glmnet)
+library(MASS)
+library(broom)
+library(pROC)
+library(yardstick)
+library(palmerpenguins)
+library(titanic)
+library(modeldata)
+library(factoextra)
+library(cluster)
+library(ggrepel)
+```
+1.1. Exploración y limpieza de datos
+a) Cargue el dataset y describa sus dimensiones, tipos de variables y porcentaje de valores perdidos por columna.
+Viendo datos, dimensiones y estructura
+```{r}
+data("titanic_train")
+
+head(titanic_train)
+
+dim(titanic_train)
+
+str(titanic_train)
+
+```
+```{r}
+titanic_train$Embarked
+titanic_train$Age
+```
+
+Viendo data, cantidades de NA y porcentajes de NA y ""
+```{r}
+summary(titanic_train)
+
+colSums(is.na(titanic_train))
+
+colMeans(is.na(titanic_train))*100
+
+colSums(titanic_train == "", na.rm = TRUE)
+
+colMeans(titanic_train == "", na.rm = TRUE)*100
+```
+Como se puede observar Age es la unica variable que presenta datos NA, siendo estos 177, un 19.865% de las observaciones, y Embarked presenta dos datos faltantes "", representando el 0.224% de embarked
+
+b) Limpie los datos considerando al menos las variables:
+  Survived, Pclass, Sex, Age, SibSp, Parch, Fare, Embarked.
+d) Transforme las variables categóricas en factores cuando corresponda.
+Seleccion de variables y transformacion de variables a factores
+```{r}
+titanic <- titanic_train %>%
+  dplyr::select(
+    Survived,
+    Pclass,
+    Sex,
+    Age,
+    SibSp,
+    Parch,
+    Fare,
+    Embarked
+  )
+
+titanic <- titanic %>%
+  mutate(
+    Survived = factor(Survived),
+    Pclass = factor(Pclass),
+    Sex = factor(Sex)
+  )
+```
+
+c) Justifique cómo manejará los valores perdidos, especialmente en Age y Embarked.
+
+Tratamiento de valores NA
+
+```{r}
+titanic$Age[is.na(titanic$Age)] <- median(titanic$Age, na.rm = TRUE)
+
+table(titanic$Embarked)
+
+titanic$Embarked[titanic$Embarked == ""] <- "S"
+
+titanic$Embarked <- factor(titanic$Embarked)
+```
+La variable Age contiene aproximadamente un 20 % de valores faltantes. En lugar de eliminar estas observaciones, se reemplazo por la mediana de la edad para conservar el tamaño de la muestra y reducir el efecto de valores extremos. La variable Embarked presentaba únicamente dos valores perdidos (""), por lo que se reemplazaron por la moda de la variable (S), ya que representa la opción más frecuente y minimiza el impacto sobre la distribución original de los datos.
+
+1.2. Visualización exploratoria
+
+Grafico 1.- Supervivencia según sexo
+
+```{r}
+ggplot(titanic, aes(x = Sex, fill = Survived)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    title = "Supervivencia según sexo",
+    x = "Sexo",
+    y = "Porcentaje",
+    fill = "Sobrevivió"
+  ) +
+  theme_minimal()
+```
+Se observa una diferencia importante entre hombres y mujeres. La proporción de mujeres que sobrevivió es considerablemente mayor que la de los hombres. Esto sugiere que el sexo podría ser uno de los predictores más importantes dentro del modelo de regresión logística.
+
+Grafico 2.- Supervivencia según clase
+```{r}
+ggplot(titanic, aes(x = Pclass, fill = Survived)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    title = "Supervivencia según clase",
+    x = "Clase",
+    y = "Porcentaje",
+    fill = "Sobrevivió"
+  ) +
+  theme_minimal()
+```
+Los pasajeros de primera clase presentan una proporción de supervivencia considerablemente mayor que los pasajeros de tercera clase. Esto indica que la clase del boleto podría ser una variable relevante para explicar la supervivencia.
+
+Grafico 3.- Distribución de edad según supervivencia
+
+```{r}
+ggplot(titanic,
+       aes(x = Survived,
+           y = Age,
+           fill = Survived)) +
+  geom_boxplot() +
+  labs(
+    title = "Edad según supervivencia",
+    x = "Sobrevivió",
+    y = "Edad"
+  ) +
+  theme_minimal()
+```
+La distribución de edades presenta una fuerte superposición entre ambos grupos. Aunque los sobrevivientes parecen tener una mediana de edad ligeramente menor, la edad por sí sola no permite separar claramente a quienes sobrevivieron de quienes no.
+
+Gráfico 4.- Tarifa pagada vs supervivencia
+
+```{r}
+ggplot(titanic,
+       aes(x = Survived,
+           y = Fare,
+           fill = Survived)) +
+  geom_boxplot() +
+  labs(
+    title = "Tarifa pagada según supervivencia",
+    x = "Sobrevivió",
+    y = "Tarifa"
+  ) +
+  theme_minimal()
+```
+Los pasajeros que sobrevivieron tienden a haber pagado tarifas más elevadas. Esto sugiere que Fare podría actuar como un indicador indirecto del nivel socioeconómico o de la clase del pasajero, variables que parecen estar relacionadas con la probabilidad de supervivencia.
+
+El análisis exploratorio muestra que las variables Sex, Pclass y Fare presentan diferencias claras entre pasajeros que sobrevivieron y aquellos que no. En particular, las mujeres y los pasajeros de primera clase registran mayores tasas de supervivencia. La variable Age muestra diferencias menos marcadas, aunque los sobrevivientes tienden a ser ligeramente más jóvenes. Estos resultados sugieren que las variables exploradas poseen capacidad predictiva y justifican su inclusión en el modelo de regresión logística.
+
+
+1.3. Modelo logístico base
+```{r}
+modelo_log <- glm(
+  Survived ~ Pclass + Sex + Age + SibSp + Parch + Fare + Embarked,
+  data = titanic,
+  family = binomial
+)
+
+summary(modelo_log)
+```
+1.3.a.- ¿Qué variables son estadísticamente significativas?
+De acuerdo con los valores-p obtenidos en el modelo, las variables Pclass, Sex, Age y SibSp presentan evidencia estadística de asociación con la supervivencia (p < 0.05). Las demás variables no muestran una contribución significativa una vez consideradas conjuntamente con el resto de los predictores.
+
+```{r}
+exp(cbind(
+  OR = coef(modelo_log),
+  confint(modelo_log)
+))
+```
+1.3.b- Interprete al menos cuatro coeficientes usando odds ratios.
+El odds ratio de Sexmale es 0.066, lo que indica que los hombres tienen aproximadamente un 93.4 % menos de probabilidades de sobrevivir que las mujeres, manteniendo constantes las demás variables.
+El odds ratio de Pclass3 es 0.116, indicando que los pasajeros de tercera clase presentan aproximadamente un 88.4 % menos de probabilidades de sobrevivir que los pasajeros de primera clase.
+El odds ratio de Age es 0.962, por lo que cada año adicional de edad disminuye las probabilidades de supervivencia aproximadamente un 3.8 %, manteniendo constantes las demás variables.
+El odds ratio de Fare es 1.002, indicando que un aumento en la tarifa pagada incrementa ligeramente las probabilidades de supervivencia.
+
+1.3.c- ¿Qué significa un odds ratio mayor que 1? ¿Y menor que 1?
+Un odds ratio mayor que 1 indica que la variable aumenta las probabilidades de que ocurra el evento de interés (en este caso, sobrevivir). Por el contrario, un odds ratio menor que 1 indica que la variable disminuye dichas probabilidades. Un odds ratio igual a 1 sugiere que la variable no tiene efecto sobre las probabilidades del evento.
+
+1.3.d- ¿Qué limitaciones tiene interpretar significancia estadística sin evaluar desempeño predictivo?
+La significancia estadística permite determinar si existe evidencia de asociación entre una variable y la respuesta, pero no garantiza que el modelo tenga un buen desempeño predictivo. Un modelo puede contener variables altamente significativas y, aun así, clasificar mal nuevas observaciones. Por ello, además de analizar los valores p, es necesario evaluar el modelo mediante métricas como Accuracy, Sensibilidad, Especificidad, AUC ROC y la matriz de confusión utilizando un conjunto de prueba.
+
+1.4. Selección automática por AIC
+
+```{r}
+modelo_aic <- MASS::stepAIC(
+  modelo_log,
+  direction = "both",
+  trace = TRUE
+)
+```
+```{r}
+summary(modelo_aic)
+formula(modelo_aic)
+```
+1.4.a- ¿Qué variables fueron seleccionadas?
+Las variables seleccionadas fueron fueron Pclass, Sex, Age, SibSp y Embarked
+
+1.4.b- ¿El modelo seleccionado por AIC es más simple que el modelo completo?
+Sí, porque contiene menos predictores que el modelo completo.
+
+```{r}
+AIC(modelo_log)
+AIC(modelo_aic)
+```
+1.4.c- Compare el AIC del modelo completo y del modelo seleccionado.
+El modelo completo obtuvo un AIC de 805.04, mientras que el modelo seleccionado mediante stepAIC() obtuvo un AIC de 802.37. Dado que un menor valor de AIC indica un mejor equilibrio entre el ajuste del modelo y su complejidad, se concluye que el modelo seleccionado es preferible según este criterio. La diferencia de aproximadamente 2.67 unidades sugiere una mejora moderada al eliminar variables que aportaban poca información.
+
+1.4.d- Discuta si un menor AIC implica necesariamente mejor capacidad predictiva.
+No, Un menor AIC indica un mejor equilibrio entre ajuste y complejidad dentro del conjunto de entrenamiento, pero no garantiza un mejor desempeño predictivo en datos nuevos. Para evaluar la capacidad predictiva es necesario utilizar un conjunto de prueba y métricas como Accuracy, Sensibilidad, Especificidad o AUC ROC.
+
+1.5. Ridge y lasso
+
+Convirtiendo las variables factores en dummys
+```{r}
+model_dummy <- model.matrix(
+  Survived ~ Pclass + Sex + Age + SibSp + Parch + Fare + Embarked,
+  data = titanic
+)[,-1]
+```
+Definiendo la variable de respuesta
+```{r}
+resp <- as.numeric(as.character(titanic$Survived))
+```
+Definiendo modelo ridge
+```{r}
+ridge_model <- glmnet(
+  model_dummy,
+  resp,
+  family = "binomial",
+  alpha = 0
+)
+```
+validacion cruzada
+```{r}
+cv_ridge <- cv.glmnet(
+  model_dummy,
+  resp,
+  family = "binomial",
+  alpha = 0
+)
+cv_ridge$lambda.min
+cv_ridge$lambda.1se
+```
+Definiendo modelo lasso
+```{r}
+cv_lasso <- cv.glmnet(
+  model_dummy,
+  resp,
+  family = "binomial",
+  alpha = 1
+)
+cv_lasso$lambda.min
+cv_lasso$lambda.1se
+```
+1.5.d- Compare los valores de lambda.min y lambda.1se.
+lambda.min corresponde al valor de λ que minimiza el error promedio de validación cruzada.
+lambda.1se corresponde al mayor valor de λ cuyo error se encuentra dentro de una desviación estándar del mínimo.
+
+En Ridge, lambda.1se (0.06699505) es mayor que lambda.min (0.02642423).
+En Lasso, lambda.1se (0.02581673) también es mayor que lambda.min (0.001738538).
+
+Esto significa que lambda.1se aplica una penalización más fuerte sobre los coeficientes, produciendo modelos más simples y menos propensos al sobreajuste, aunque con una ligera pérdida en el ajuste respecto al modelo obtenido con lambda.min.
+
+Comparando coeficientes de ridge y lasso
+```{r}
+coef(
+  cv_ridge,
+  s = "lambda.min"
+)
+coef(
+  cv_lasso,
+  s = "lambda.min"
+)
+```
+
+1.5.e- Lasso eliminó la variable EmbarkedQ, indicando que esta aporta poca información para explicar la supervivencia cuando se consideran conjuntamente las demás variables: Pclass, sex, age, sibsp, parch, fare, embarkedS y embarkedC.
+
+
