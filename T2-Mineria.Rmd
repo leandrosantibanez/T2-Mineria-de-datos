@@ -5,10 +5,23 @@ date: "2026-06-29"
 output: 
   pdf_document:
     latex_engine: xelatex
+    toc: true
+    df_print: paged
+  pdf_notebook:
+    toc: true
+    toc_float: true
+    number_sections: true
 ---
 
 Carga de librerias
-```{r packages}
+```{r setup, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 8,
+  fig.height = 5
+)
 packages <- c(
   "tidyverse",
   "tidymodels",
@@ -52,10 +65,6 @@ dim(titanic_train)
 
 str(titanic_train)
 
-```
-```{r}
-titanic_train$Embarked
-titanic_train$Age
 ```
 
 Viendo data, cantidades de NA y porcentajes de NA y ""
