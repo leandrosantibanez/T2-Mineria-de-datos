@@ -36,7 +36,8 @@ packages <- c(
   "modeldata",
   "factoextra",
   "cluster",
-  "ggrepel"
+  "ggrepel",
+  "caret"
 )
 library(tidyverse)
 library(tidymodels)
@@ -52,6 +53,7 @@ library(modeldata)
 library(factoextra)
 library(cluster)
 library(ggrepel)
+library(caret)
 ```
 1.1. Exploración y limpieza de datos
 a) Cargue el dataset y describa sus dimensiones, tipos de variables y porcentaje de valores perdidos por columna.
@@ -318,4 +320,185 @@ coef(
 
 1.5.e- Lasso eliminó la variable EmbarkedQ, indicando que esta aporta poca información para explicar la supervivencia cuando se consideran conjuntamente las demás variables: Pclass, sex, age, sibsp, parch, fare, embarkedS y embarkedC.
 
+1.6.- Evaluación predictiva
+
+Datos para entrenamiento
+```{r}
+set.seed(123)
+
+idx <- sample(
+  seq_len(nrow(titanic)),
+  size = floor(0.70 * nrow(titanic))
+)
+
+train <- titanic[idx, ]
+test <- titanic[-idx, ]
+```
+1.6.1.- Regresión logística completa.
+```{r}
+modelo_log_train <- glm(
+  Survived ~ Pclass + Sex + Age + SibSp + Parch + Fare + Embarked,
+  data = train,
+  family = binomial
+)
+```
+1.6.2.- Regresión logística seleccionada por AIC.
+```{r}
+modelo_aic_train <- MASS::stepAIC(
+  modelo_log_train,
+  direction = "both",
+  trace = FALSE
+)
+```
+Preparacion para ridge y lasso.
+```{r}
+matrix_train <- model.matrix(
+  Survived ~ Pclass + Sex + Age + SibSp + Parch + Fare + Embarked,
+  data = train
+)[, -1]
+
+resp_train <- as.numeric(as.character(train$Survived))
+
+matrix_test <- model.matrix(
+  Survived ~ Pclass + Sex + Age + SibSp + Parch + Fare + Embarked,
+  data = test
+)[,-1]
+
+resp_test <- as.numeric(as.character(test$Survived))
+```
+1.6.4.- Ridge
+```{r}
+ridge <- cv.glmnet(
+  matrix_train,
+  resp_train,
+  family = "binomial",
+  alpha = 0
+)
+```
+1.6.4.- Lasso.
+```{r}
+lasso <- cv.glmnet(
+  matrix_train,
+  resp_train,
+  family = "binomial",
+  alpha = 1
+)
+```
+Predicciones:
+```{r}
+prob_log <- predict(
+  modelo_log_train,
+  newdata = test,
+  type = "response"
+)
+prob_aic <- predict(
+  modelo_aic_train,
+  newdata = test,
+  type = "response"
+)
+prob_ridge <- predict(
+  ridge,
+  newx = matrix_test,
+  s = "lambda.min",
+  type = "response"
+)
+prob_lasso <- predict(
+  lasso,
+  newx = matrix_test,
+  s = "lambda.min",
+  type = "response"
+)
+```
+Tratar resultados:
+```{r}
+clasificar <- function(prob){
+  factor(
+    ifelse(prob > 0.5,"1","0"),
+    levels=c("0","1")
+  )
+}
+pred_log <- clasificar(prob_log)
+pred_aic <- clasificar(prob_aic)
+pred_ridge <- clasificar(prob_ridge)
+pred_lasso <- clasificar(prob_lasso)
+
+cm_log <- confusionMatrix(pred_log,test$Survived)
+cm_aic <- confusionMatrix(pred_aic,test$Survived)
+cm_ridge <- confusionMatrix(pred_ridge,test$Survived)
+cm_lasso <- confusionMatrix(pred_lasso,test$Survived)
+
+roc_log <- roc(test$Survived,prob_log)
+roc_aic <- roc(test$Survived,prob_aic)
+roc_ridge <- roc(test$Survived,as.vector(prob_ridge))
+roc_lasso <- roc(test$Survived,as.vector(prob_lasso))
+
+auc(roc_log)
+auc(roc_aic)
+auc(roc_ridge)
+auc(roc_lasso)
+
+resultados <- data.frame(
+
+Modelo=c("Logístico",
+         "AIC",
+         "Ridge",
+         "Lasso"),
+
+Accuracy=c(
+cm_log$overall["Accuracy"],
+cm_aic$overall["Accuracy"],
+cm_ridge$overall["Accuracy"],
+cm_lasso$overall["Accuracy"]
+),
+
+Sensibilidad=c(
+cm_log$byClass["Sensitivity"],
+cm_aic$byClass["Sensitivity"],
+cm_ridge$byClass["Sensitivity"],
+cm_lasso$byClass["Sensitivity"]
+),
+
+Especificidad=c(
+cm_log$byClass["Specificity"],
+cm_aic$byClass["Specificity"],
+cm_ridge$byClass["Specificity"],
+cm_lasso$byClass["Specificity"]
+),
+
+AUC=c(
+auc(roc_log),
+auc(roc_aic),
+auc(roc_ridge),
+auc(roc_lasso)
+)
+
+)
+
+resultados
+```
+matriz de confusion
+```{r}
+cm_log$table
+
+cm_aic$table
+
+cm_ridge$table
+
+cm_lasso$table
+```
+1.6.a.- ¿Cuál modelo tiene mejor desempeño predictivo?
+De acuerdo con las métricas obtenidas, el modelo Ridge presentó el mejor desempeño predictivo. Este modelo alcanzó el mayor Accuracy (0.7948), la mayor Sensibilidad (0.8571) y el mayor AUC (0.8518) entre los cuatro modelos evaluados. Además, su matriz de confusión mostró el mayor número de clasificaciones correctas (144 verdaderos negativos y 69 verdaderos positivos), lo que indica una mejor capacidad para clasificar correctamente a los pasajeros del conjunto de prueba.
+
+1.6.b.- ¿Cuál modelo es más interpretable?
+El modelo Lasso es el más interpretable. Esto se debe a que realiza selección automática de variables, reduciendo a cero los coeficientes de aquellas que aportan poca información al modelo. En este caso, Lasso eliminó la variable EmbarkedQ, obteniendo un modelo más simple y fácil de analizar que la regresión logística completa o Ridge, que conservan todas las variables.
+
+1.6.c.- ¿Existe una diferencia importante entre el modelo más interpretable y el más predictivo?
+Sí, aunque en este caso la diferencia es pequeña. El modelo Ridge fue el que obtuvo el mejor desempeño predictivo, mientras que Lasso fue el más interpretable. Sin embargo, las diferencias en Accuracy y AUC entre ambos modelos fueron mínimas (Accuracy de 0.7948 para Ridge frente a 0.7799 para Lasso, y AUC de 0.8518 frente a 0.8502). Esto indica que es posible obtener un modelo más sencillo de interpretar sin perder una cantidad importante de capacidad predictiva.
+
+1.6.d.- ¿Qué modelo recomendaría y por qué?
+Recomendaría el modelo Ridge, ya que fue el que presentó el mejor desempeño predictivo en el conjunto de prueba. Obtuvo el mayor Accuracy, la mayor Sensibilidad y el mayor AUC, lo que demuestra una mejor capacidad para clasificar correctamente la supervivencia de los pasajeros.
+
+No obstante, si el objetivo principal fuera la interpretación del modelo y la identificación de las variables más relevantes, el modelo Lasso sería una excelente alternativa, ya que simplifica el modelo eliminando automáticamente variables con poca contribución.
+
+2. Problema 2: PCA y clustering en pingüinos
 
