@@ -61,7 +61,7 @@ library(caret)
 library(palmerpenguins)
 library(ggplot2)
 ```
-# 1. Predicción de supervivencia en Titanic
+# Problema 1: Predicción de supervivencia en Titanic
 
 ## 1.1. Exploración y limpieza de datos
 
@@ -555,7 +555,7 @@ Recomendaría el modelo Ridge, ya que fue el que presentó el mejor desempeño p
 
 No obstante, si el objetivo principal fuera la interpretación del modelo y la identificación de las variables más relevantes, el modelo Lasso sería una excelente alternativa, ya que simplifica el modelo eliminando automáticamente variables con poca contribución.
 
-# 2. Problema 2: PCA y clustering en pingüinos
+# Problema 2: PCA y clustering en pingüinos
 
 ## 2.1.- Preparacion de datos
 
@@ -1021,7 +1021,7 @@ Cuando PCA se utiliza para visualización, su objetivo es reducir la dimensional
 
 Un riesgo importante es asumir que los clústeres representan categorías naturales o definitivas cuando en realidad son el resultado de un algoritmo que depende de las variables utilizadas, la medida de distancia y el método de agrupamiento seleccionado. Los grupos encontrados pueden variar al modificar estos elementos o incorporar nuevas variables. Por ello, los clústeres deben interpretarse como una herramienta para explorar patrones en los datos y no como una clasificación absoluta de los individuos.
 
-Problema 3: Predicción de rotación laboral con selección de variables,PCA y clustering
+# Problema 3: Predicción de rotación laboral con selección de variables,PCA y clustering
 
 ## 3.1. Preparación de datos
 a) Cargue el dataset attrition.
@@ -1355,7 +1355,7 @@ Lasso resulta más útil para interpretar el modelo, ya que elimina las variable
 Ridge, parece ser la mejor opción para la predicción porque utiliza toda la información disponible sin eliminar variables, aunque el rendimiento de ambos métodos puede ser muy similar y depende del conjunto de datos utilizado.
 
 
-3.6. Evaluación predictiva
+## 3.6. Evaluación predictiva
 ### Matriz:
 ```{r}
 x_test <- model.matrix(Attrition ~ ., test_procesado)[, -1]
