@@ -1,19 +1,21 @@
 ---
 title: "T2 Mineria de datos"
-author: "Leandro Santibañez"
+author: "Leandro Santibañez y Marcos Rojas"
 date: "2026-06-29"
 output: 
   pdf_document:
     latex_engine: xelatex
     toc: true
     df_print: paged
+    toc_depth: 3
+    number_sections: true
   pdf_notebook:
     toc: true
     toc_float: true
     number_sections: true
 ---
+## Carga de librerias
 
-Carga de librerias
 ```{r setup, message=FALSE, warning=FALSE}
 knitr::opts_chunk$set(
   echo = TRUE,
@@ -37,7 +39,8 @@ packages <- c(
   "factoextra",
   "cluster",
   "ggrepel",
-  "caret"
+  "caret",
+  "palmerpenguins"
 )
 library(tidyverse)
 library(tidymodels)
@@ -54,9 +57,14 @@ library(factoextra)
 library(cluster)
 library(ggrepel)
 library(caret)
+library(palmerpenguins)
 ```
-1.1. Exploración y limpieza de datos
-a) Cargue el dataset y describa sus dimensiones, tipos de variables y porcentaje de valores perdidos por columna.
+# 1. Predicción de supervivencia en Titanic
+
+## 1.1. Exploración y limpieza de datos
+
+### a) Cargue el dataset y describa sus dimensiones, tipos de variables y porcentaje de valores perdidos por columna.
+
 Viendo datos, dimensiones y estructura
 ```{r}
 data("titanic_train")
@@ -69,7 +77,8 @@ str(titanic_train)
 
 ```
 
-Viendo data, cantidades de NA y porcentajes de NA y ""
+### Viendo data, cantidades de NA y porcentajes de NA y ""
+
 ```{r}
 summary(titanic_train)
 
@@ -83,9 +92,12 @@ colMeans(titanic_train == "", na.rm = TRUE)*100
 ```
 Como se puede observar Age es la unica variable que presenta datos NA, siendo estos 177, un 19.865% de las observaciones, y Embarked presenta dos datos faltantes "", representando el 0.224% de embarked
 
-b) Limpie los datos considerando al menos las variables:
+### b) Limpie los datos considerando al menos las variables:
+
   Survived, Pclass, Sex, Age, SibSp, Parch, Fare, Embarked.
-d) Transforme las variables categóricas en factores cuando corresponda.
+  
+### d) Transforme las variables categóricas en factores cuando corresponda.
+
 Seleccion de variables y transformacion de variables a factores
 ```{r}
 titanic <- titanic_train %>%
@@ -108,7 +120,7 @@ titanic <- titanic %>%
   )
 ```
 
-c) Justifique cómo manejará los valores perdidos, especialmente en Age y Embarked.
+### c) Justifique cómo manejará los valores perdidos, especialmente en Age y Embarked.
 
 Tratamiento de valores NA
 
@@ -123,9 +135,9 @@ titanic$Embarked <- factor(titanic$Embarked)
 ```
 La variable Age contiene aproximadamente un 20 % de valores faltantes. En lugar de eliminar estas observaciones, se reemplazo por la mediana de la edad para conservar el tamaño de la muestra y reducir el efecto de valores extremos. La variable Embarked presentaba únicamente dos valores perdidos (""), por lo que se reemplazaron por la moda de la variable (S), ya que representa la opción más frecuente y minimiza el impacto sobre la distribución original de los datos.
 
-1.2. Visualización exploratoria
+## 1.2. Visualización exploratoria
 
-Grafico 1.- Supervivencia según sexo
+### Grafico 1.- Supervivencia según sexo
 
 ```{r}
 ggplot(titanic, aes(x = Sex, fill = Survived)) +
@@ -141,7 +153,8 @@ ggplot(titanic, aes(x = Sex, fill = Survived)) +
 ```
 Se observa una diferencia importante entre hombres y mujeres. La proporción de mujeres que sobrevivió es considerablemente mayor que la de los hombres. Esto sugiere que el sexo podría ser uno de los predictores más importantes dentro del modelo de regresión logística.
 
-Grafico 2.- Supervivencia según clase
+### Grafico 2.- Supervivencia según clase
+
 ```{r}
 ggplot(titanic, aes(x = Pclass, fill = Survived)) +
   geom_bar(position = "fill") +
@@ -156,7 +169,7 @@ ggplot(titanic, aes(x = Pclass, fill = Survived)) +
 ```
 Los pasajeros de primera clase presentan una proporción de supervivencia considerablemente mayor que los pasajeros de tercera clase. Esto indica que la clase del boleto podría ser una variable relevante para explicar la supervivencia.
 
-Grafico 3.- Distribución de edad según supervivencia
+### Grafico 3.- Distribución de edad según supervivencia
 
 ```{r}
 ggplot(titanic,
@@ -173,7 +186,7 @@ ggplot(titanic,
 ```
 La distribución de edades presenta una fuerte superposición entre ambos grupos. Aunque los sobrevivientes parecen tener una mediana de edad ligeramente menor, la edad por sí sola no permite separar claramente a quienes sobrevivieron de quienes no.
 
-Gráfico 4.- Tarifa pagada vs supervivencia
+### Gráfico 4.- Tarifa pagada vs supervivencia
 
 ```{r}
 ggplot(titanic,
@@ -193,7 +206,8 @@ Los pasajeros que sobrevivieron tienden a haber pagado tarifas más elevadas. Es
 El análisis exploratorio muestra que las variables Sex, Pclass y Fare presentan diferencias claras entre pasajeros que sobrevivieron y aquellos que no. En particular, las mujeres y los pasajeros de primera clase registran mayores tasas de supervivencia. La variable Age muestra diferencias menos marcadas, aunque los sobrevivientes tienden a ser ligeramente más jóvenes. Estos resultados sugieren que las variables exploradas poseen capacidad predictiva y justifican su inclusión en el modelo de regresión logística.
 
 
-1.3. Modelo logístico base
+## 1.3. Modelo logístico base
+
 ```{r}
 modelo_log <- glm(
   Survived ~ Pclass + Sex + Age + SibSp + Parch + Fare + Embarked,
@@ -203,7 +217,8 @@ modelo_log <- glm(
 
 summary(modelo_log)
 ```
-1.3.a.- ¿Qué variables son estadísticamente significativas?
+### a) ¿Qué variables son estadísticamente significativas?
+
 De acuerdo con los valores-p obtenidos en el modelo, las variables Pclass, Sex, Age y SibSp presentan evidencia estadística de asociación con la supervivencia (p < 0.05). Las demás variables no muestran una contribución significativa una vez consideradas conjuntamente con el resto de los predictores.
 
 ```{r}
@@ -212,19 +227,22 @@ exp(cbind(
   confint(modelo_log)
 ))
 ```
-1.3.b- Interprete al menos cuatro coeficientes usando odds ratios.
+### b) Interprete al menos cuatro coeficientes usando odds ratios.
+
 El odds ratio de Sexmale es 0.066, lo que indica que los hombres tienen aproximadamente un 93.4 % menos de probabilidades de sobrevivir que las mujeres, manteniendo constantes las demás variables.
 El odds ratio de Pclass3 es 0.116, indicando que los pasajeros de tercera clase presentan aproximadamente un 88.4 % menos de probabilidades de sobrevivir que los pasajeros de primera clase.
 El odds ratio de Age es 0.962, por lo que cada año adicional de edad disminuye las probabilidades de supervivencia aproximadamente un 3.8 %, manteniendo constantes las demás variables.
 El odds ratio de Fare es 1.002, indicando que un aumento en la tarifa pagada incrementa ligeramente las probabilidades de supervivencia.
 
-1.3.c- ¿Qué significa un odds ratio mayor que 1? ¿Y menor que 1?
+### c) ¿Qué significa un odds ratio mayor que 1? ¿Y menor que 1?
+
 Un odds ratio mayor que 1 indica que la variable aumenta las probabilidades de que ocurra el evento de interés (en este caso, sobrevivir). Por el contrario, un odds ratio menor que 1 indica que la variable disminuye dichas probabilidades. Un odds ratio igual a 1 sugiere que la variable no tiene efecto sobre las probabilidades del evento.
 
-1.3.d- ¿Qué limitaciones tiene interpretar significancia estadística sin evaluar desempeño predictivo?
+### d) ¿Qué limitaciones tiene interpretar significancia estadística sin evaluar desempeño predictivo?
+
 La significancia estadística permite determinar si existe evidencia de asociación entre una variable y la respuesta, pero no garantiza que el modelo tenga un buen desempeño predictivo. Un modelo puede contener variables altamente significativas y, aun así, clasificar mal nuevas observaciones. Por ello, además de analizar los valores p, es necesario evaluar el modelo mediante métricas como Accuracy, Sensibilidad, Especificidad, AUC ROC y la matriz de confusión utilizando un conjunto de prueba.
 
-1.4. Selección automática por AIC
+## 1.4. Selección automática por AIC
 
 ```{r}
 modelo_aic <- MASS::stepAIC(
@@ -237,36 +255,45 @@ modelo_aic <- MASS::stepAIC(
 summary(modelo_aic)
 formula(modelo_aic)
 ```
-1.4.a- ¿Qué variables fueron seleccionadas?
+### a) ¿Qué variables fueron seleccionadas?
+
 Las variables seleccionadas fueron fueron Pclass, Sex, Age, SibSp y Embarked
 
-1.4.b- ¿El modelo seleccionado por AIC es más simple que el modelo completo?
+### b) ¿El modelo seleccionado por AIC es más simple que el modelo completo?
+
 Sí, porque contiene menos predictores que el modelo completo.
 
 ```{r}
 AIC(modelo_log)
 AIC(modelo_aic)
 ```
-1.4.c- Compare el AIC del modelo completo y del modelo seleccionado.
+### c) Compare el AIC del modelo completo y del modelo seleccionado.
+
 El modelo completo obtuvo un AIC de 805.04, mientras que el modelo seleccionado mediante stepAIC() obtuvo un AIC de 802.37. Dado que un menor valor de AIC indica un mejor equilibrio entre el ajuste del modelo y su complejidad, se concluye que el modelo seleccionado es preferible según este criterio. La diferencia de aproximadamente 2.67 unidades sugiere una mejora moderada al eliminar variables que aportaban poca información.
 
-1.4.d- Discuta si un menor AIC implica necesariamente mejor capacidad predictiva.
+### d) Discuta si un menor AIC implica necesariamente mejor capacidad predictiva.
+
 No, Un menor AIC indica un mejor equilibrio entre ajuste y complejidad dentro del conjunto de entrenamiento, pero no garantiza un mejor desempeño predictivo en datos nuevos. Para evaluar la capacidad predictiva es necesario utilizar un conjunto de prueba y métricas como Accuracy, Sensibilidad, Especificidad o AUC ROC.
 
-1.5. Ridge y lasso
+## 1.5. Ridge y lasso
 
-Convirtiendo las variables factores en dummys
+### Convirtiendo las variables factores en dummys
+
 ```{r}
 model_dummy <- model.matrix(
   Survived ~ Pclass + Sex + Age + SibSp + Parch + Fare + Embarked,
   data = titanic
 )[,-1]
 ```
-Definiendo la variable de respuesta
+
+### Definiendo la variable de respuesta
+
 ```{r}
 resp <- as.numeric(as.character(titanic$Survived))
 ```
-Definiendo modelo ridge
+
+### a) Definiendo modelo ridge
+
 ```{r}
 ridge_model <- glmnet(
   model_dummy,
@@ -275,7 +302,9 @@ ridge_model <- glmnet(
   alpha = 0
 )
 ```
-validacion cruzada
+
+### validacion cruzada
+
 ```{r}
 cv_ridge <- cv.glmnet(
   model_dummy,
@@ -286,7 +315,8 @@ cv_ridge <- cv.glmnet(
 cv_ridge$lambda.min
 cv_ridge$lambda.1se
 ```
-Definiendo modelo lasso
+### b) Definiendo modelo lasso
+
 ```{r}
 cv_lasso <- cv.glmnet(
   model_dummy,
@@ -297,7 +327,8 @@ cv_lasso <- cv.glmnet(
 cv_lasso$lambda.min
 cv_lasso$lambda.1se
 ```
-1.5.d- Compare los valores de lambda.min y lambda.1se.
+### d) Compare los valores de lambda.min y lambda.1se.
+
 lambda.min corresponde al valor de λ que minimiza el error promedio de validación cruzada.
 lambda.1se corresponde al mayor valor de λ cuyo error se encuentra dentro de una desviación estándar del mínimo.
 
@@ -306,7 +337,8 @@ En Lasso, lambda.1se (0.02581673) también es mayor que lambda.min (0.001738538)
 
 Esto significa que lambda.1se aplica una penalización más fuerte sobre los coeficientes, produciendo modelos más simples y menos propensos al sobreajuste, aunque con una ligera pérdida en el ajuste respecto al modelo obtenido con lambda.min.
 
-Comparando coeficientes de ridge y lasso
+### Comparando coeficientes de ridge y lasso
+
 ```{r}
 coef(
   cv_ridge,
@@ -318,9 +350,11 @@ coef(
 )
 ```
 
-1.5.e- Lasso eliminó la variable EmbarkedQ, indicando que esta aporta poca información para explicar la supervivencia cuando se consideran conjuntamente las demás variables: Pclass, sex, age, sibsp, parch, fare, embarkedS y embarkedC.
+### e) Identifique qué variables conserva lasso en el modelo final.
 
-1.6.- Evaluación predictiva
+Lasso eliminó la variable EmbarkedQ, indicando que esta aporta poca información para explicar la supervivencia cuando se consideran conjuntamente las demás variables: Pclass, sex, age, sibsp, parch, fare, embarkedS y embarkedC.
+
+## 1.6.- Evaluación predictiva
 
 Datos para entrenamiento
 ```{r}
@@ -334,7 +368,9 @@ idx <- sample(
 train <- titanic[idx, ]
 test <- titanic[-idx, ]
 ```
-1.6.1.- Regresión logística completa.
+
+### 1.6.1.- Regresión logística completa.
+
 ```{r}
 modelo_log_train <- glm(
   Survived ~ Pclass + Sex + Age + SibSp + Parch + Fare + Embarked,
@@ -342,7 +378,9 @@ modelo_log_train <- glm(
   family = binomial
 )
 ```
-1.6.2.- Regresión logística seleccionada por AIC.
+
+### 1.6.2.- Regresión logística seleccionada por AIC.
+
 ```{r}
 modelo_aic_train <- MASS::stepAIC(
   modelo_log_train,
@@ -350,7 +388,9 @@ modelo_aic_train <- MASS::stepAIC(
   trace = FALSE
 )
 ```
-Preparacion para ridge y lasso.
+
+### Preparacion para ridge y lasso.
+
 ```{r}
 matrix_train <- model.matrix(
   Survived ~ Pclass + Sex + Age + SibSp + Parch + Fare + Embarked,
@@ -366,7 +406,9 @@ matrix_test <- model.matrix(
 
 resp_test <- as.numeric(as.character(test$Survived))
 ```
-1.6.4.- Ridge
+
+### 1.6.4.- Ridge
+
 ```{r}
 ridge <- cv.glmnet(
   matrix_train,
@@ -375,7 +417,9 @@ ridge <- cv.glmnet(
   alpha = 0
 )
 ```
-1.6.4.- Lasso.
+
+### 1.6.4.- Lasso.
+
 ```{r}
 lasso <- cv.glmnet(
   matrix_train,
@@ -384,7 +428,9 @@ lasso <- cv.glmnet(
   alpha = 1
 )
 ```
-Predicciones:
+
+### Predicciones:
+
 ```{r}
 prob_log <- predict(
   modelo_log_train,
@@ -409,7 +455,9 @@ prob_lasso <- predict(
   type = "response"
 )
 ```
-Tratar resultados:
+
+### Tratar resultados:
+
 ```{r}
 clasificar <- function(prob){
   factor(
@@ -476,7 +524,8 @@ auc(roc_lasso)
 
 resultados
 ```
-matriz de confusion
+### matriz de confusion
+
 ```{r}
 cm_log$table
 
@@ -486,19 +535,488 @@ cm_ridge$table
 
 cm_lasso$table
 ```
-1.6.a.- ¿Cuál modelo tiene mejor desempeño predictivo?
+### a) ¿Cuál modelo tiene mejor desempeño predictivo?
+
 De acuerdo con las métricas obtenidas, el modelo Ridge presentó el mejor desempeño predictivo. Este modelo alcanzó el mayor Accuracy (0.7948), la mayor Sensibilidad (0.8571) y el mayor AUC (0.8518) entre los cuatro modelos evaluados. Además, su matriz de confusión mostró el mayor número de clasificaciones correctas (144 verdaderos negativos y 69 verdaderos positivos), lo que indica una mejor capacidad para clasificar correctamente a los pasajeros del conjunto de prueba.
 
-1.6.b.- ¿Cuál modelo es más interpretable?
+### b) ¿Cuál modelo es más interpretable?
+
 El modelo Lasso es el más interpretable. Esto se debe a que realiza selección automática de variables, reduciendo a cero los coeficientes de aquellas que aportan poca información al modelo. En este caso, Lasso eliminó la variable EmbarkedQ, obteniendo un modelo más simple y fácil de analizar que la regresión logística completa o Ridge, que conservan todas las variables.
 
-1.6.c.- ¿Existe una diferencia importante entre el modelo más interpretable y el más predictivo?
+### c) ¿Existe una diferencia importante entre el modelo más interpretable y el más predictivo?
+
 Sí, aunque en este caso la diferencia es pequeña. El modelo Ridge fue el que obtuvo el mejor desempeño predictivo, mientras que Lasso fue el más interpretable. Sin embargo, las diferencias en Accuracy y AUC entre ambos modelos fueron mínimas (Accuracy de 0.7948 para Ridge frente a 0.7799 para Lasso, y AUC de 0.8518 frente a 0.8502). Esto indica que es posible obtener un modelo más sencillo de interpretar sin perder una cantidad importante de capacidad predictiva.
 
-1.6.d.- ¿Qué modelo recomendaría y por qué?
+## #d) ¿Qué modelo recomendaría y por qué?
+
 Recomendaría el modelo Ridge, ya que fue el que presentó el mejor desempeño predictivo en el conjunto de prueba. Obtuvo el mayor Accuracy, la mayor Sensibilidad y el mayor AUC, lo que demuestra una mejor capacidad para clasificar correctamente la supervivencia de los pasajeros.
 
 No obstante, si el objetivo principal fuera la interpretación del modelo y la identificación de las variables más relevantes, el modelo Lasso sería una excelente alternativa, ya que simplifica el modelo eliminando automáticamente variables con poca contribución.
 
-2. Problema 2: PCA y clustering en pingüinos
+# 2. Problema 2: PCA y clustering en pingüinos
 
+## 2.1.- Preparacion de datos
+
+```{r}
+data("penguins")
+glimpse(penguins)
+summary(penguins)
+
+penguins_pca <- penguins %>%
+  dplyr::select(
+    bill_length_mm,
+    bill_depth_mm,
+    flipper_length_mm,
+    body_mass_g,
+    species,
+    island,
+    sex
+  )
+colSums(is.na(penguins_pca))
+
+penguins_pca <- penguins_pca %>%
+  drop_na()
+
+penguins_num <- penguins_pca %>%
+  dplyr::select(
+    bill_length_mm,
+    bill_depth_mm,
+    flipper_length_mm,
+    body_mass_g
+  )
+penguins_scaled <- scale(penguins_num)
+```
+El conjunto de datos contiene algunas observaciones con valores faltantes, principalmente en las variables morfológicas y en el sexo. En este trabajo se decidió eliminar dichas observaciones mediante drop_na(), ya que representan un porcentaje pequeño del total y permiten realizar el análisis sin introducir valores artificiales mediante imputación. Posteriormente, las variables numéricas fueron estandarizadas utilizando scale(). Este paso es necesario porque las variables se encuentran en distintas unidades de medida (milímetros y gramos), por lo que una variable de mayor magnitud podría dominar tanto el PCA como los algoritmos de clustering.
+
+## 2.2.- Visualizacion explotaria
+
+### a) Distribucion de la masa corporal por especie
+```{r}
+ggplot(penguins_pca,
+       aes(species, body_mass_g, fill = species)) +
+  geom_boxplot(alpha = .8) +
+  labs(
+    title = "Distribución de masa corporal por especie",
+    x = "Especie",
+    y = "Masa corporal (g)"
+  ) +
+  theme_minimal()
+```
+Se observa que la especie Gentoo presenta la mayor masa corporal, mientras que Adelie posee los menores valores. Chinstrap presenta una distribución intermedia.
+
+### b) Relación entre la longitud y la profundidad del pico.
+
+```{r}
+ggplot(penguins_pca,
+       aes(bill_length_mm,
+           bill_depth_mm,
+           color = species)) +
+  geom_point(size = 2) +
+  theme_minimal() +
+  labs(
+    title = "Longitud y profundidad del pico",
+    x = "Longitud del pico (mm)",
+    y = "Profundidad del pico (mm)"
+  )
+```
+Se aprecia una separación parcial entre especies. Los pingüinos Gentoo presentan picos menos profundos, mientras que Adelie posee picos relativamente más profundos.
+
+### c) Relación entre el largo de aleta y la masa corporal.
+
+```{r}
+ggplot(penguins_pca,
+       aes(flipper_length_mm,
+           body_mass_g,
+           color = species)) +
+  geom_point(size = 2) +
+  theme_minimal() +
+  labs(
+    title = "Largo de aleta y masa corporal"
+  )
+```
+Existe una relación positiva entre el largo de la aleta y la masa corporal. Los individuos con aletas más largas tienden a presentar mayor peso corporal.
+### d) Diferencias morfológicas por isla.
+
+```{r}
+ggplot(penguins_pca,
+       aes(island,
+           body_mass_g,
+           fill = island)) +
+  geom_boxplot() +
+  facet_wrap(~species) +
+  theme_minimal()
+```
+Las diferencias entre islas dependen en gran medida de la especie presente en cada una. Se observan variaciones en la masa corporal entre islas, aunque estas parecen estar influenciadas por la composición de especies.
+
+## 2.3.- PCA
+
+### Aplicacion de PCA
+
+```{r}
+pca_penguins <- prcomp(
+  penguins_scaled,
+  center = TRUE,
+  scale. = TRUE
+)
+
+summary(pca_penguins)
+```
+```{r}
+var_exp <- pca_penguins$sdev^2 /
+  sum(pca_penguins$sdev^2)
+
+cat("los valores de varianza indivuales por componente son: ", var_exp, "\n")
+
+PC1c <- var_exp[1] * 100
+PC2c <- var_exp[2] * 100
+cat("la varianza que explica el PC1: ", PC1c, "\n")
+cat("la varianza que explica el PC2: ", PC2c, "\n")
+var_acum <- cumsum(var_exp)
+cat("componentes necesarios para tener 80% de varianza acumulada: ", which(var_acum >= 0.80)[1], "\n")
+
+```
+
+### Scree PLot
+
+```{r}
+fviz_eig(
+  pca_penguins,
+  addlabels = TRUE,
+  ylim = c(0,70)
+)
+```
+
+### a) ¿Qué porcentaje de varianza explica PC1?
+
+Como podemos ver en los resultados el PC1 explica el 68.63% de la varianza
+
+### b) ¿Qué porcentaje de varianza explica PC2?
+
+Mientras que el PC2 explica el 19,45% de la varianza
+El primer componente principal concentra la mayor parte de la variabilidad del conjunto de datos, mientras que el segundo componente aporta una fracción adicional importante. Juntos permiten representar una elevada proporción de la información contenida en las cuatro variables originales.
+
+### c)¿Cuántos componentes se necesitan para explicar al menos 80% de la varianza?
+
+Para explicar al menos el 80% de la varianza, segun el pca, se necesitan al menos 2 componentes, PC1 y PC2, juntos ya explican el 88,08% de la varianza acumulada
+
+
+### PC1 vs PC2
+
+```{r}
+pca_df <- as.data.frame(pca_penguins$x)
+
+pca_df$species <- penguins_pca$species
+
+ggplot(pca_df, aes(x = PC1, y = PC2, color = species)) +
+  geom_point(size = 3, alpha = 0.8) +
+  labs(
+    title = "PCA: PC1 vs PC2",
+    x = "PC1",
+    y = "PC2",
+    color = "Especie"
+  ) +
+  theme_minimal()
+```
+
+### Biplot
+
+```{r}
+fviz_pca_biplot(
+  pca_penguins,
+  habillage = penguins_pca$species,
+  addEllipses = TRUE,
+  repel = TRUE,
+  col.var = "black",
+  label = "var"
+) +
+  labs(
+    title = "Biplot del PCA de Penguins",
+    color = "Especie"
+  )
+```
+```{r}
+loadings_pc <- as.data.frame(pca_penguins$rotation) %>%
+  rownames_to_column("variable")
+
+peso_pc1 <-loadings_pc %>%
+  dplyr::select(variable, PC1) %>%
+  arrange(desc(abs(PC1)))
+
+peso_pc2 <- loadings_pc %>%
+  dplyr::select(variable, PC2) %>%
+  arrange(desc(abs(PC2)))
+
+peso_pc1
+peso_pc2
+```
+### d) Interprete las cargas de PC1 y PC2.
+
+Las cargas indican la contribución de cada variable original a los componentes principales. En el caso de PC1, las mayores cargas positivas corresponden a flipper_length_mm (0.577), body_mass_g (0.550) y bill_length_mm (0.454), mientras que bill_depth_mm (-0.399) presenta una carga negativa. Esto sugiere que PC1 está asociado principalmente al tamaño corporal general de los pingüinos, ya que los individuos con aletas más largas, mayor masa corporal y picos más largos tienden a obtener valores altos en este componente.
+
+En PC2, la variable con mayor influencia es bill_depth_mm (-0.796), seguida de bill_length_mm (-0.600). En contraste, body_mass_g (-0.076) y flipper_length_mm (-0.006) tienen una contribución muy pequeña. Esto indica que PC2 representa principalmente variaciones relacionadas con la morfología del pico, diferenciando a los individuos según la profundidad y longitud de este, más que por su tamaño corporal.
+
+
+### e) ¿Qué variables contribuyen más a cada componente?
+
+En PC1, las variables que más contribuyen son:
+
+flipper_length_mm (0.577)
+body_mass_g (0.550)
+
+Esto confirma que el primer componente está fuertemente relacionado con el tamaño corporal de los pingüinos.
+
+En PC2, las variables con mayor contribución son:
+
+bill_depth_mm (0.796)
+bill_length_mm (0.600)
+
+Por lo tanto, el segundo componente está determinado casi exclusivamente por las características del pico.
+
+## 2.4.- Interpretación biológica y estadística del PCA
+
+### a) ¿PC1 parece representar el tamaño corporal en general? Justifique usando las cargas.
+
+Sí. El primer componente principal (PC1) parece representar el tamaño corporal general de los pingüinos. Esto se debe a que las variables con mayor contribución son flipper_length_mm (0.577) y body_mass_g (0.550), seguidas por bill_length_mm (0.454). Estas variables están asociadas con el tamaño del individuo, por lo que valores altos de PC1 corresponden, en general, a pingüinos de mayor tamaño. En el biplot se observa además que los vectores de flipper_length_mm y body_mass_g apuntan en una dirección similar, indicando una correlación positiva entre ambas variables.
+
+### b) ¿PC2 parece separar la forma del pico u otra característica morfológica?
+
+Sí. El segundo componente principal (PC2) está determinado principalmente por bill_depth_mm (-0.796) y bill_length_mm (-0.600), mientras que flipper_length_mm y body_mass_g presentan contribuciones muy bajas. Esto indica que PC2 describe principalmente diferencias relacionadas con la morfología del pico, permitiendo distinguir individuos según la profundidad y longitud del pico más que por su tamaño corporal.
+
+### c) ¿Las especies se separan claramente en el espacio del PCA?
+
+La separación es parcialmente clara. La especie Gentoo forma un grupo bien definido hacia los valores positivos de PC1, con muy poco solapamiento respecto de las demás especies. En cambio, Adelie y Chinstrap presentan una mayor cercanía y existe una zona donde ambas especies se superponen, especialmente alrededor del centro del gráfico.
+
+### d) ¿Qué especies se solapan más?
+
+Las especies que presentan el mayor solapamiento son Adelie y Chinstrap. Esto sugiere que ambas poseen características morfológicas similares en las variables analizadas (longitud y profundidad del pico, longitud de la aleta y masa corporal). En contraste, Gentoo aparece claramente separada debido a su mayor tamaño corporal y longitud de aleta.
+
+### e) ¿Qué ventajas ofrece PCA para visualizar este dataset?
+
+El análisis de componentes principales permite reducir las cuatro variables morfológicas originales a dos componentes que conservan la mayor parte de la variabilidad del conjunto de datos. Esto facilita la visualización de patrones, la identificación de grupos naturales y la detección de similitudes o diferencias entre especies. Además, el biplot permite interpretar simultáneamente la posición de los individuos y la contribución de cada variable al análisis, proporcionando una representación más clara de las relaciones entre las características morfológicas de los pingüinos.
+
+## 2.5. Clustering con k-means
+
+### a) Use el método del codo y silhouette para elegir un número razonable de clusters.
+
+```{r}
+fviz_nbclust(
+  penguins_scaled,
+  kmeans,
+  method = "wss",
+  k.max = 5
+) +
+labs(title = "Método del codo")
+```
+
+```{r}
+fviz_nbclust(
+  penguins_scaled,
+  kmeans,
+  method = "silhouette",
+  k.max = 5
+) +
+labs(title = "Método Silhouette")
+```
+
+Tanto el método del codo como el índice Silhouette sugieren que tres clusters representan un compromiso adecuado entre simplicidad y calidad de agrupamiento. Por esta razón se seleccionó k=3 para ajustar el modelo final.
+
+### b) Ajuste el modelo final de k-means.
+
+```{r}
+set.seed(123)
+
+kmeans_final <- kmeans(
+  penguins_scaled,
+  centers = 3,
+  nstart = 50
+)
+
+kmeans_final
+```
+### c) Visualice los clústeres en el espacio PC1-PC2.
+
+```{r}
+penguins_pca$cluster <- factor(kmeans_final$cluster)
+scores <- as.data.frame(pca_penguins$x)
+
+scores$cluster <- penguins_pca$cluster
+
+ggplot(scores,
+       aes(PC1,
+           PC2,
+           color = cluster)) +
+  geom_point(size = 2) +
+  theme_minimal() +
+  labs(
+    title = "Clusters obtenidos mediante k-means",
+    color = "Cluster"
+  )
+```
+
+### d) Compare los clústeres obtenidos con la variable real species.
+
+```{r}
+ggplot(scores,
+       aes(PC1,
+           PC2,
+           color = penguins_pca$species,
+           shape = penguins_pca$cluster)) +
+  geom_point(size = 2) +
+  theme_minimal() +
+  labs(
+    title = "Comparación entre especies y clusters"
+  )
+```
+### e) Construya una tabla cruzada entre clúster y especie.
+
+```{r}
+tabla_cluster <- table(
+  Cluster = penguins_pca$cluster,
+  Species = penguins_pca$species
+)
+
+tabla_cluster
+```
+
+### f) Discuta si los clústeres recuperan las especies biológicas.
+
+Los resultados muestran que el algoritmo k-means logra recuperar en gran medida las especies biológicas, especialmente en el caso de Gentoo, cuyos individuos fueron agrupados completamente en un único clúster. Esto indica que esta especie presenta diferencias morfológicas suficientemente marcadas respecto de las demás.
+
+Sin embargo, se observa cierto solapamiento entre Adelie y Chinstrap. El Cluster 1 contiene mayoritariamente individuos Chinstrap (63) junto con algunos Adelie (22), mientras que el Cluster 2 agrupa principalmente Adelie (124) y solo algunos Chinstrap (5). Esta mezcla sugiere que ambas especies comparten características morfológicas similares, dificultando una separación perfecta mediante un algoritmo de clustering no supervisado.
+
+En general, los resultados son consistentes con el análisis de componentes principales, donde también se observó una clara separación de Gentoo y un mayor solapamiento entre Adelie y Chinstrap.
+```{r}
+ggplot(penguins_pca,
+       aes(cluster, fill = species)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    title = "Composición de especies en cada cluster",
+    x = "Cluster",
+    y = "Proporción",
+    fill = "Especie"
+  ) +
+  theme_minimal()
+```
+
+## 2.6. Clustering jerárquico
+
+### Cálculo de la matriz de distancias
+
+```{r}
+dist_penguins <- dist(penguins_scaled)
+```
+
+### Complete Linkage
+
+```{r}
+hc_complete <- hclust(
+  dist_penguins,
+  method = "complete"
+)
+
+plot(
+  hc_complete,
+  main = "Dendrograma - Complete Linkage",
+  xlab = "",
+  sub = "",
+  cex = 0.6
+)
+
+rect.hclust(
+  hc_complete,
+  k = 3,
+  border = "red"
+)
+```
+### Ward
+
+```{r}
+hc_ward <- hclust(
+  dist_penguins,
+  method = "ward.D2"
+)
+
+plot(
+  hc_ward,
+  main = "Dendrograma - Ward.D2",
+  xlab = "",
+  sub = "",
+  cex = 0.6
+)
+
+rect.hclust(
+  hc_ward,
+  k = 3,
+  border = "blue"
+)
+```
+### Particion
+
+```{r}
+cluster_complete <- cutree(
+  hc_complete,
+  k = 3
+)
+
+cluster_ward <- cutree(
+  hc_ward,
+  k = 3
+)
+```
+
+### Comparacion de Linkage con species
+
+```{r}
+table(
+  Cluster = cluster_complete,
+  Species = penguins_pca$species
+)
+```
+### Comparacion de Ward con species
+
+```{r}
+table(
+  Cluster = cluster_ward,
+  Species = penguins_pca$species
+)
+```
+### c) Compare los resultados con los de k-means.
+
+Los tres métodos de agrupamiento identifican correctamente a la especie Gentoo, ya que todos asignan sus 119 individuos a un único clúster. Esto confirma que Gentoo posee características morfológicas claramente diferenciadas respecto de las demás especies.
+
+Sin embargo, existen diferencias en la clasificación de Adelie y Chinstrap. El algoritmo k-means presenta un mayor solapamiento entre ambas especies, agrupando 22 individuos Adelie junto con 63 Chinstrap en un mismo clúster y clasificando 5 individuos Chinstrap junto con 124 Adelie en otro.
+
+Por su parte, el método Complete Linkage logra una separación más precisa, concentrando 145 individuos Adelie y solo 6 Chinstrap en un clúster, mientras que otro clúster contiene principalmente Chinstrap (62 individuos) con únicamente un Adelie.
+
+Finalmente, Ward.D2 también identifica correctamente a Gentoo, pero mezcla una mayor cantidad de individuos Chinstrap con Adelie (11 Chinstrap dentro del clúster Adelie), aunque consigue agrupar exclusivamente a los 57 Chinstrap restantes en otro clúster.
+
+### d) ¿Qué método entrega grupos más coherentes con las especies?
+
+De los métodos evaluados, Complete Linkage es el que genera grupos más coherentes con las especies biológicas. Este método consigue separar casi completamente las especies Adelie y Chinstrap, presentando únicamente siete observaciones clasificadas en un grupo distinto al esperado (6 Chinstrap dentro del grupo Adelie y 1 Adelie dentro del grupo Chinstrap).
+
+En comparación, k-means presenta un mayor nivel de mezcla entre ambas especies (27 observaciones), mientras que Ward.D2 también muestra una separación adecuada, aunque clasifica 11 individuos Chinstrap junto con Adelie.
+
+En los tres métodos la especie Gentoo es identificada perfectamente, lo que confirma que sus características morfológicas son suficientemente distintas para formar un grupo independiente.
+
+Considerando la cantidad de observaciones que no coinciden con la especie biológica correspondiente, Complete Linkage fue el método que obtuvo el mejor desempeño en este conjunto de datos, seguido por Ward.D2 y finalmente k-means. (7, 11, 27)
+
+## 2.7-Discusión avanzada
+
+### a) ¿Por qué el clustering no supervisado no debe evaluarse únicamente por su coincidencia con las especies?
+
+El clustering es una técnica de aprendizaje no supervisado, por lo que su objetivo principal no es recuperar las categorías conocidas, sino identificar grupos naturales presentes en los datos a partir de las características analizadas. Por esta razón, evaluar el clustering únicamente por su coincidencia con las especies puede llevar a conclusiones erróneas. Un algoritmo puede descubrir agrupaciones válidas basadas en otros patrones, como diferencias de tamaño corporal, sexo o isla de origen, que no necesariamente coinciden con la clasificación biológica de las especies.
+
+### b) ¿Qué otros patrones podría estar captando el clustering?
+
+Además de las especies, el clustering podría estar identificando patrones relacionados con el tamaño corporal, la masa corporal, la longitud de la aleta, la morfología del pico, el sexo o incluso la isla donde habitan los pingüinos. En este análisis se observó que la especie Gentoo fue claramente diferenciada debido a sus mayores dimensiones corporales, mientras que Adelie y Chinstrap presentaron un mayor solapamiento, lo que sugiere que comparten características morfológicas similares.
+
+### c) ¿Qué diferencia hay entre usar PCA para visualización y usar PCA como entrada para clustering?
+
+Cuando PCA se utiliza para visualización, su objetivo es reducir la dimensionalidad de los datos para representar la mayor parte de la variabilidad en dos o tres componentes principales, facilitando la interpretación gráfica y la identificación de patrones. En cambio, cuando PCA se utiliza como entrada para clustering, los componentes principales reemplazan a las variables originales para realizar el agrupamiento. Esto puede reducir el ruido y la redundancia entre variables, mejorando el desempeño de algunos algoritmos, aunque también puede perderse parte de la información contenida en los componentes descartados.
+
+### d) ¿Qué riesgos existen al interpretar los clusters como categorías reales?
+
+Un riesgo importante es asumir que los clústeres representan categorías naturales o definitivas cuando en realidad son el resultado de un algoritmo que depende de las variables utilizadas, la medida de distancia y el método de agrupamiento seleccionado. Los grupos encontrados pueden variar al modificar estos elementos o incorporar nuevas variables. Por ello, los clústeres deben interpretarse como una herramienta para explorar patrones en los datos y no como una clasificación absoluta de los individuos.
+
+# 3. Predicción de rotación laboral con selección de variables, PCA y clustering
