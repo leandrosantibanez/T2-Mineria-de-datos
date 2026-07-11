@@ -40,7 +40,8 @@ packages <- c(
   "cluster",
   "ggrepel",
   "caret",
-  "palmerpenguins"
+  "palmerpenguins",
+  "ggplot2"
 )
 library(tidyverse)
 library(tidymodels)
@@ -58,6 +59,7 @@ library(cluster)
 library(ggrepel)
 library(caret)
 library(palmerpenguins)
+library(ggplot2)
 ```
 # 1. Predicción de supervivencia en Titanic
 
@@ -1019,4 +1021,536 @@ Cuando PCA se utiliza para visualización, su objetivo es reducir la dimensional
 
 Un riesgo importante es asumir que los clústeres representan categorías naturales o definitivas cuando en realidad son el resultado de un algoritmo que depende de las variables utilizadas, la medida de distancia y el método de agrupamiento seleccionado. Los grupos encontrados pueden variar al modificar estos elementos o incorporar nuevas variables. Por ello, los clústeres deben interpretarse como una herramienta para explorar patrones en los datos y no como una clasificación absoluta de los individuos.
 
-# 3. Predicción de rotación laboral con selección de variables, PCA y clustering
+Problema 3: Predicción de rotación laboral con selección de variables,PCA y clustering
+
+## 3.1. Preparación de datos
+a) Cargue el dataset attrition.
+```{r}
+data(attriton, package = "modeldata")
+
+head(attrition)
+View(attrition)
+```
+### b) Explore las dimensiones del dataset, los tipos de variables y la presencia de valores perdidos.
+```{r}
+dim(attrition)
+
+names(attrition)
+str(attrition)
+
+sum(is.na(attrition))
+```
+### c) Revise la distribución de la variable de respuesta Attrition.
+```{r}
+table1 <- table(attrition$Attrition)
+prop.table(table1)*100
+
+ggplot(attrition, aes(x = Attrition, fill = Attrition))+
+  geom_bar()+
+  labs(title="Distribución de la variable Attrition",
+       x="Abandono la empresa",
+       y="Cantidad de trabajadores")+
+  theme_minimal()
+```
+### d) Discuta si existe un desbalance de clases. ¿Qué consecuencias podría tener para la predicción?
+
+Basado en el anlisis anterior, si existe un desbalance considerable, ya que hay una relacion aproximada de 84% que permanecen en la empresa y un 16% que abandonaron. Este desbalance puede provocar que al hacer un modelo de prediccion se tome que la exactitud es correspondiente a la clase mayoritaria.
+
+
+### e) Separe los datos en entrenamiento y prueba usando una partición 70/30 o 80/20.
+```{r}
+set.seed(123)
+
+separacion_datos_attrition <- initial_split(attrition,
+                                            prop = 0.70,
+                                            strata = Attrition)
+
+train_attrition <- training(separacion_datos_attrition)
+test_attrition <- testing(separacion_datos_attrition)
+
+dim(train_attrition)
+dim(test_attrition)
+```
+### f) Identifique variables numéricas y categóricas.
+```{r}
+numeros_attrition <- attrition %>%
+  dplyr::select(where(is.numeric))
+
+categorias_attrition <- attrition %>%
+  dplyr::select(where(is.factor))
+
+numeros_attrition
+categorias_attrition
+```
+### g) Diseñe una estrategia de preprocesamiento
+```{r}
+estrategia <- recipe(Attrition ~ ., data = train_attrition) %>%
+  
+  #Conversión de variables categóricas a factores.
+  step_string2factor(all_nominal_predictors()) %>%
+  
+  #Creación de variables dummy.
+  step_dummy(all_nominal_predictors()) %>%
+  
+  #Eliminación de variables con varianza cero o casi cero.
+  step_zv(all_predictors()) %>%
+  step_nzv(all_predictors()) %>%
+  
+  #Tratamiento de posibles valores perdidos, si existieran.
+  step_impute_median(all_numeric_predictors()) %>%
+  step_impute_mode(all_nominal_predictors()) %>%
+  
+  #Estandarización de variables numéricas.
+  step_normalize(all_numeric_predictors())
+
+prep_estrategia <- prep(estrategia) 
+train_procesado <- bake(prep_estrategia, new_data = NULL)
+test_procesado <- bake(prep_estrategia, new_data = test_attrition)
+```
+
+La conversión a factores permite que R identifique correctamente las variables categóricas; las variables dummy las transforman en valores numéricos para que puedan ser utilizadas por modelos como la regresión logística y glmnet. La eliminación de variables con varianza cero o casi cero evita incluir información irrelevante, la imputación hace que el proceso sea robusto ante posibles valores perdidos y la estandarización evita que variables con escalas mayores dominen el entrenamiento de modelos como Ridge, Lasso y PCA.
+
+## 3.2. Visualización exploratoria
+### a) Proporción de rotación laboral según OverTime.
+```{r}
+ggplot(attrition, aes(x = OverTime, fill = Attrition)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    title = "Proporción de rotación laboral según horas extra",
+    x = "Realiza horas extra",
+    y = "Proporción",
+    fill = "Attrition"
+  ) +
+  theme_minimal()
+```
+
+### b) Distribución de MonthlyIncome según Attrition.
+```{r}
+ggplot(attrition, aes(x = Attrition, y = MonthlyIncome, fill = Attrition)) +
+  geom_boxplot() +
+  labs(
+    title = "Ingreso mensual según rotación laboral",
+    x = "Rotación laboral",
+    y = "Ingreso mensual"
+  ) +
+  theme_minimal()
+```
+
+### c) Relación entre Age y Attrition.
+```{r}
+ggplot(attrition, aes(x = Attrition, y = Age, fill = Attrition)) +
+  geom_boxplot() +
+  labs(
+    title = "Edad según rotación laboral",
+    x = "Rotación laboral",
+    y = "Edad"
+  ) +
+  theme_minimal()
+```
+
+### d) Proporción de rotación laboral según JobRole.
+```{r}
+ggplot(attrition, aes(x = JobRole, fill = Attrition)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    title = "Rotación laboral según cargo",
+    x = "Cargo",
+    y = "Proporción",
+    fill = "Attrition"
+  ) +
+  coord_flip() +
+  theme_minimal()
+```
+
+### e) Relación entre YearsAtCompany y Attrition.
+```{r}
+ggplot(attrition, aes(x = Attrition, y = YearsAtCompany, fill = Attrition)) +
+  geom_boxplot() +
+  labs(
+    title = "Años en la empresa según rotación",
+    x = "Rotación laboral",
+    y = "Años en la empresa"
+  ) +
+  theme_minimal()
+```
+
+### Visualizacion adicional: elegiremos visualizar si la satisfaccion laboral se ve relacionada con la rotacion laboral. Donde la hipotesis es a menor satisfaccion laboral, mayor probabilidad de abandonar la empresa
+```{r}
+ggplot(attrition, aes(x = factor(JobSatisfaction), fill = Attrition)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    title = "Rotación laboral según satisfacción en el trabajo",
+    x = "Nivel de satisfacción laboral",
+    y = "Proporción",
+    fill = "Attrition"
+  ) +
+  theme_minimal()
+```
+
+### Interpretacion de graficos:
+### a) ¿Qué variables parecen asociarse con una rotación más alta?
+Las variables que muestran una mayor asociación con la rotación laboral son OverTime, JobRole, MonthlyIncome, Age, YearsAtCompany y JobSatisfaction. Los trabajadores con mayor rotacion son los que realizan horas extras, menor ingreso, menos años en la empresa, etc.
+
+### b) ¿Qué patrones podrían ser útiles para un modelo predictivo?
+Los patrones observados muestran que realizar horas extra, tener una menor antigüedad, menores ingresos y en determinados cargos podrian ser variables a considerar para predecir la rotación laboral, presentan diferencias visibles entre los trabajadores que permanecen y quienes abandonan la empresa.
+
+### c) ¿Hay variables que parecen presentar una relación no lineal con la rotación?
+Si hay Variables como Age, MonthlyIncome y YearsAtCompany que no parecen seguir una relación estrictamente lineal con la rotación, ya que el abandono se ve principalmente en ciertos rangos de valores y no aumenta o disminuye de forma constante.
+
+
+## 3.3. Modelo logístico interpretable
+### Construccion del modelo de regresion logistica
+```{r}
+modelo_logistico <- glm(
+  Attrition ~ Age +
+    MonthlyIncome +
+    OverTime +
+    JobSatisfaction +
+    YearsAtCompany +
+    DistanceFromHome +
+    JobLevel +
+    WorkLifeBalance +
+    TotalWorkingYears +
+    JobRole,
+  data = train_attrition,
+  family = binomial()
+)
+
+summary(modelo_logistico)
+
+tabla_odds <- exp(cbind(
+  OR = coef(modelo_logistico),
+  confint(modelo_logistico)
+))
+tabla_odds
+```
+
+### a) ¿Qué variables se asocian con una mayor probabilidad de rotación laboral?
+Las variables que más se relacionan con la rotación laboral son OverTime, DistanceFromHome, JobSatisfaction y algunos cargos como Human Resources, Laboratory Technician, Sales Executive y Sales Representative. Se puede concluir que realizar horas extra, vivir más lejos del trabajo o desempeñarse en ciertos cargos aumenta la probabilidad de abandonar la empresa, mientras que una mayor satisfacción laboral la disminuye.
+
+### b) Interprete al menos cinco coeficientes usando odds ratios.
+Los trabajadores que realizan horas extra tienen 4,5 veces más probabilidades de abandonar la empresa. Un mayor nivel de satisfacción laboral reduce aproximadamente a la mitad esa probabilidad. Además, a mayor distancia entre el hogar y el trabajo, la probabilidad de rotación aumenta levemente. Los trabajadores de Human Resources tienen alrededor de 7 veces más probabilidades de abandonar la empresa y los Sales Representative cerca de 11 veces más que el cargo de referencia.
+
+### c) ¿Qué significa que el odds ratio de una variable sea mayor que 1?
+Un odds ratio mayor que 1 significa que esa variable aumenta la probabilidad de que un trabajador abandone la empresa.
+
+### d) ¿Qué significa que el odds ratio de una variable sea menor que 1?
+Un odds ratio menor que 1 significa que esa variable disminuye la probabilidad de que un trabajador abandone la empresa.
+
+### e) ¿Qué variables podrían resultar más útiles para una intervención organizacional?
+Las variables más útiles son OverTime, JobSatisfaction, DistanceFromHome y algunos JobRole, ya que la empresa puede actuar sobre ellas mediante medidas como reducir las horas extra, mejorar el ambiente laboral o implementar beneficios para ciertos trabajadores, ayudando así a disminuir la rotación.
+
+
+## 3.4. Selección automática por AIC
+
+```{r}
+modelo_completo_attrition <- glm(
+  Attrition ~ .,data = train_attrition, family = binomial()
+)
+
+modelo_AIC_attrition <- stepAIC(
+  modelo_completo,
+  direction = "both",
+  trace = FALSE
+)
+
+summary(modelo_AIC_attrition)
+
+AIC(modelo_completo_attrition)
+AIC(modelo_AIC_attrition)
+
+formula(modelo_AIC_attrition)
+```
+### a) ¿Qué variables fueron seleccionadas?
+Las variables seleccionadas por AIC son Age, BusinessTravel, DistanceFromHome, EnvironmentSatisfaction, Gender, JobInvolvement, JobRole, JobSatisfaction, MaritalStatus, NumCompaniesWorked, OverTime, RelationshipSatisfaction, TotalWorkingYears, TrainingTimesLastYear, WorkLifeBalance, YearsInCurrentRole, YearsSinceLastPromotion.
+
+### b) ¿El modelo final es más simple que el modelo inicial?
+Sí. El modelo final utiliza menos variables, por lo que es más sencillo de interpretar sin perder demasiado poder explicativo.
+
+### c) ¿Qué variables fueron eliminadas?
+Las variables MonthlyIncome, YearsAtCompany y JobLevel fueron eliminadas, ya que no mejoraban el modelo según el criterio AIC.
+
+### d) ¿Coinciden las variables seleccionadas con las observadas en el análisis exploratorio?
+Sí. Variables como OverTime, JobSatisfaction, DistanceFromHome y JobRole en el análisis exploratorio destacaban y también fueron seleccionadas por el modelo AIC, lo que confirma que tienen una relación importante con la rotación laboral.
+
+### e) ¿Un menor AIC garantiza una mejor predicción en datos nuevos? Justifique.
+No. Un AIC más bajo indica que el modelo se ajusta mejor a los datos de entrenamiento sin ser demasiado complejo, pero eso no asegura que sea el que mejor prediga datos nuevos. Para comprobarlo es necesario evaluarlo con el conjunto de prueba mediante métricas como Accuracy o AUC.
+
+
+## 3.5. Ridge y lasso
+### Matriz
+```{r}
+x_train <- model.matrix(Attrition ~ ., train_procesado)[, -1]
+y_train <- ifelse(train_procesado$Attrition == "Yes", 1, 0)
+```
+
+### a) Ridge logistic regression.
+```{r}
+set.seed(123)
+
+ridge_cv <- cv.glmnet(
+  x_train,
+  y_train,
+  family = "binomial",
+  alpha = 0
+)
+```
+
+### b) Lasso logistic regression.
+```{r}
+set.seed(123)
+
+lasso_cv <- cv.glmnet(
+  x_train,
+  y_train,
+  family = "binomial",
+  alpha = 1
+)
+```
+### c) Seleccione lambda usando validación cruzada.
+```{r}
+ridge_cv$lambda.min
+ridge_cv$lambda.1se
+
+lasso_cv$lambda.min
+lasso_cv$lambda.1se
+```
+
+### d) Compare lambda.min y lambda.1se.
+En ambos modelos se obtuvo un lambda.min menor que lambda.1se (0.0153 y 0.1426 para Ridge; 0.0045 y 0.0149 para Lasso). Esto significa que lambda.min busca el mejor ajuste posible, mientras que lambda.1se utiliza una penalización mayor y genera un modelo más simple.
+
+### e) Identifique qué variables conserva lasso con coeficientes distintos de cero.
+```{r}
+coef_lasso <- coef(lasso_cv)
+coef_lasso
+coef_lasso[coef_lasso[,1] != 0, ]
+```
+Lasso conservó variables como Age, DistanceFromHome, MonthlyIncome, NumCompaniesWorked, TotalWorkingYears, YearsInCurrentRole, BusinessTravel, EnvironmentSatisfaction, Gender, JobInvolvement, JobRole, JobSatisfaction, MaritalStatus, OverTime y WorkLifeBalance, eliminando el resto al asignarles un coeficiente igual a cero.
+
+### f) Construya un gráfico con los coeficientes más relevantes del modelo lasso.
+```{r}
+plot(lasso_cv)
+```
+
+### g) Compare las variables seleccionadas por lasso con las seleccionadas por AIC.
+```{r}
+formula(modelo_AIC_attrition)
+coef_lasso[coef_lasso[,1] != 0, ]
+```
+Ambos métodos conservan variables como Age, BusinessTravel, DistanceFromHome, EnvironmentSatisfaction, Gender, JobInvolvement, JobSatisfaction, MaritalStatus, NumCompaniesWorked, OverTime y TotalWorkingYears. Sin embargo, Lasso eliminó algunas variables que AIC mantuvo, como YearsSinceLastPromotion, e incorporó otras como MonthlyIncome, mostrando que cada método selecciona variables siguiendo un criterio distinto.
+
+### a) ¿Lasso selecciona un conjunto más pequeño de variables?
+Sí. Lasso eliminó varias variables al dejar sus coeficientes en cero y conservó solo aquellas que aportan más información para predecir la rotación laboral, obteniendo un modelo más simple.
+
+### b) ¿Ridge elimina variables?
+No. Ridge mantiene todas las variables del modelo, pero reduce la influencia de las que tienen menor importancia para evitar el sobreajuste.
+
+### c) ¿Qué método parece más útil para interpretación?
+Lasso resulta más útil para interpretar el modelo, ya que elimina las variables menos relevantes y deja un conjunto más reducido, facilitando identificar cuáles tienen mayor influencia en la rotación laboral.
+
+### d) ¿Qué método parece más útil para predicción?
+Ridge, parece ser la mejor opción para la predicción porque utiliza toda la información disponible sin eliminar variables, aunque el rendimiento de ambos métodos puede ser muy similar y depende del conjunto de datos utilizado.
+
+
+3.6. Evaluación predictiva
+### Matriz:
+```{r}
+x_test <- model.matrix(Attrition ~ ., test_procesado)[, -1]
+y_test <- test_procesado$Attrition
+```
+
+### Modelos a comparar:
+```{r}
+# Regresión logística interpretable.
+prob_logistico <- predict(
+  modelo_logistico,
+  newdata = test_attrition,
+  type = "response"
+)
+pred_logistico <- ifelse(prob_logistico > 0.5, "Yes", "No")
+pred_logistico <- factor(pred_logistico,
+                         levels = levels(test_attrition$Attrition))
+
+# Regresión logística seleccionada por AIC.
+prob_aic <- predict(
+  modelo_AIC_attrition,
+  newdata = test_attrition,
+  type = "response"
+)
+pred_aic <- ifelse(prob_aic > 0.5, "Yes", "No")
+pred_aic <- factor(pred_aic,
+                   levels = levels(test_attrition$Attrition))
+
+# Ridge.
+prob_ridge <- predict(
+  ridge_cv,
+  newx = x_test,
+  type = "response"
+)
+pred_ridge <- ifelse(prob_ridge > 0.5, "Yes", "No")
+pred_ridge <- factor(pred_ridge,
+                     levels = levels(test_attrition$Attrition))
+
+# Lasso.
+prob_lasso <- predict(
+  lasso_cv,
+  newx = x_test,
+  type = "response"
+)
+pred_lasso <- ifelse(prob_lasso > 0.5, "Yes", "No")
+pred_lasso <- factor(pred_lasso,
+                     levels = levels(test_attrition$Attrition))
+```
+### Metricas:
+```{r}
+#modelo logistico
+confusionMatrix(
+    pred_logistico,
+    test_attrition$Attrition,
+    positive = "Yes"
+)
+roc_logistico <- roc(
+    test_attrition$Attrition,
+    prob_logistico
+)
+auc(roc_logistico)
+
+#AIC
+confusionMatrix(
+    pred_aic,
+    test_attrition$Attrition,
+    positive = "Yes"
+)
+roc_aic <- roc(
+    test_attrition$Attrition,
+    prob_aic
+)
+auc(roc_aic)
+
+#Ridge
+confusionMatrix(
+    pred_ridge,
+    test_attrition$Attrition,
+    positive = "Yes"
+)
+roc_ridge <- roc(
+    test_attrition$Attrition,
+    as.vector(prob_ridge)
+)
+auc(roc_ridge)
+
+#Lasso
+confusionMatrix(
+    pred_lasso,
+    test_attrition$Attrition,
+    positive = "Yes"
+)
+roc_lasso <- roc(
+    test_attrition$Attrition,
+    as.vector(prob_lasso)
+)
+auc(roc_lasso)
+```
+
+### a) ¿Cuál modelo tiene mayor AUC?
+El modelo seleccionado por AIC obtuvo el mejor desempeño, con un AUC de 0.84, superando a Ridge (0.833), Lasso (0.823) y la regresión logística interpretable (0.785). Esto indica que fue el modelo con mayor capacidad para diferenciar entre los trabajadores que abandonan la empresa y los que permanecen.
+
+### b) ¿Cuál modelo tiene mejor sensibilidad para detectar trabajadores que dejan la empresa?
+El modelo AIC presentó la mayor sensibilidad (44.44 %), siendo el que mejor identificó a los trabajadores que abandonan la empresa. Los demás modelos tuvieron sensibilidades considerablemente menores: regresión logística (19.44 %), Lasso (11.11 %) y Ridge (5.56 %).
+
+### c) ¿Por qué accuracy podría ser una métrica engañosa si hay desbalance de clases?
+Porque la mayoría de los trabajadores no abandona la empresa, por lo que un modelo puede obtener una accuracy alta simplemente prediciendo casi siempre "No". En estos casos es más importante revisar métricas como la sensibilidad y el AUC, ya que muestran mejor qué tan bien detecta los casos de rotación.
+
+### d) ¿Qué modelo recomendaría si el objetivo principal es detectar posibles casos de rotación?
+Modelo AIC, ya que obtuvo el mayor AUC y la mayor sensibilidad, por lo que fue el más efectivo para identificar a los trabajadores con mayor riesgo de abandonar la empresa.
+
+### e) ¿Qué modelo recomendaría si el objetivo principal es explicar los factores asociados?
+Regresión logística interpretable, ya que sus coeficientes permiten entender con mayor facilidad cómo influye cada variable en la probabilidad de rotación.
+
+
+
+## 3.7. PCA aplicado a variables laborales numéricas
+### variables numericas para PCA:
+```{r}
+datos_numericos_PCA <- attrition %>%
+  dplyr::select(where(is.numeric))
+```
+### aplicar PCA:
+```{r}
+pca_attrition <- prcomp(
+  datos_numericos_PCA,
+  center = TRUE,
+  scale. = TRUE
+)
+
+summary(pca_attrition)
+cumsum(pca_attrition$sdev^2 / sum(pca_attrition$sdev^2))
+
+sort(abs(pca_attrition$rotation[,1]), decreasing = TRUE)
+sort(abs(pca_attrition$rotation[,2]), decreasing = TRUE)
+```
+### Scree plot:
+```{r}
+plot(
+  pca_attrition,
+  type = "l",
+  main = "Scree Plot"
+)
+```
+### gracifo pc1 vs pc2, coloreado por Attrition:
+```{r}
+scores <- as.data.frame(pca_attrition$x)
+scores$Attrition <- attrition$Attrition
+
+ggplot(scores,
+       aes(PC1, PC2, color = Attrition)) +
+  geom_point(size = 2, alpha = 0.7) +
+  labs(
+    title = "PCA: PC1 vs PC2",
+    x = "PC1",
+    y = "PC2"
+  ) +
+  theme_minimal()
+```
+### grafico de contribucion de variables de pc1 y pc2
+```{r}
+contrib_pc1 <- sort(abs(pca_attrition$rotation[,1]), decreasing = TRUE)
+
+barplot(
+  contrib_pc1,
+  las = 2,
+  main = "Contribución a PC1"
+)
+
+contrib_pc2 <- sort(abs(pca_attrition$rotation[,2]), decreasing = TRUE)
+
+barplot(
+  contrib_pc2,
+  las = 2,
+  main = "Contribución a PC2"
+)
+```
+### a) ¿Cuánta varianza explica PC1?
+El primer componente principal (PC1) explica aproximadamente el 28,95 % de la variabilidad total de los datos, siendo el componente que concentra la mayor cantidad de información.
+
+### b) ¿Cuánta varianza explica PC2?
+El segundo componente principal (PC2) explica aproximadamente el 11,08 % de la variabilidad total. Junto con PC1, ambos componentes explican cerca del 40,03 % de la información del conjunto de datos.
+
+### c) ¿Cuántos componentes se necesitan para explicar al menos 80 % de la varianza?
+Se necesitan 9 componentes principales, ya que la varianza acumulada alcanza aproximadamente el 83,87 %, superando el 80 % solicitado.
+
+### d) ¿Qué variables cargan más en PC1?
+Las variables que más influyen en el PC1 son TotalWorkingYears, YearsAtCompany, JobLevel, MonthlyIncome, YearsInCurrentRole y YearsWithCurrManager.
+
+### e) ¿Qué variables cargan más en PC2?
+Las variables con mayor influencia en el PC2 son NumCompaniesWorked, Age, YearsWithCurrManager, YearsInCurrentRole, YearsAtCompany y MonthlyIncome.
+
+### f) Interprete conceptualmente los dos primeros componentes principales
+El PC1 representa principalmente la experiencia y permanencia del trabajador en la empresa, ya que está formado por variables como los años trabajados, el nivel del cargo y el ingreso mensual. PC2 está más relacionado con la trayectoria laboral del empleado, considerando factores como la cantidad de empresas en las que ha trabajado, la edad y el tiempo que lleva en su cargo y con su jefe actual.
+
+
+
+## 3.8. Modelo usando componentes principales
